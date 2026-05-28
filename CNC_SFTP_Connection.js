@@ -2,7 +2,7 @@
  * @NApiVersion 2.1
  * @NScriptType MapReduceScript
  */
-define(['N/sftp', 'N/log', 'N/runtime'], function (sftp, log, runtime) {
+define(['N/sftp', 'N/log'], function (sftp, log) {
 
     var CONFIG = {
         username: 'cncecbarton.dhruvsoni',
@@ -15,41 +15,11 @@ define(['N/sftp', 'N/log', 'N/runtime'], function (sftp, log, runtime) {
         timeout: 20
     };
 
-    var TARGET_FOLDER_ID = 37467318;
-    var MAX_FILES_PER_RUN = 50;
-    var MIN_USAGE_LEFT = 300;
-
-    function getRemainingUsage() {
-        return runtime.getCurrentScript().getRemainingUsage();
-    }
-
-    function isCsv(fileName) {
-        return fileName && fileName.toLowerCase().slice(-4) === '.csv';
-    }
-
-    function buildFilePath(directory, fileName) {
-        if (!directory || directory === '/') {
-            return '/' + fileName;
-        }
-        if (directory.charAt(directory.length - 1) === '/') {
-            return directory + fileName;
-        }
-        return directory + '/' + fileName;
-    }
-
     function getInputData() {
-        var connection;
-        var fileList = [];
-        var processed = 0;
-        var saved = 0;
-        var removed = 0;
-        var skipped = 0;
-        var failed = 0;
-
         try {
-            log.audit('START', 'Connecting to SFTP');
+            log.audit('TEST START', 'Trying SFTP connection');
 
-            connection = sftp.createConnection({
+            var connection = sftp.createConnection({
                 username: CONFIG.username,
                 passwordGuid: CONFIG.passwordGuid,
                 url: CONFIG.url,
@@ -60,78 +30,24 @@ define(['N/sftp', 'N/log', 'N/runtime'], function (sftp, log, runtime) {
                 timeout: CONFIG.timeout
             });
 
-            log.audit('CONNECTED', 'SFTP connection successful');
+            log.audit('TEST CONNECTED', 'SFTP connection successful');
 
-            fileList = connection.list({
+            var fileList = connection.list({
                 path: CONFIG.directory
             }) || [];
 
-            log.audit('FILES FOUND', 'Total files found: ' + fileList.length);
+            log.audit('TEST FILE COUNT', fileList.length);
 
             for (var i = 0; i < fileList.length; i++) {
-                var remainingUsage = getRemainingUsage();
-
-                if (remainingUsage < MIN_USAGE_LEFT) {
-                    log.audit('STOPPED', 'Low usage left: ' + remainingUsage);
-                    break;
-                }
-
-                if (processed >= MAX_FILES_PER_RUN) {
-                    log.audit('STOPPED', 'Max files processed in this run: ' + MAX_FILES_PER_RUN);
-                    break;
-                }
-
-                var sftpFileObj = fileList[i];
-                var fileName = sftpFileObj && sftpFileObj.name ? sftpFileObj.name : '';
-
-                if (!isCsv(fileName)) {
-                    skipped++;
-                    continue;
-                }
-
-                processed++;
-                log.audit('PROCESSING FILE', fileName);
-
-                try {
-                    var downloadedFile = connection.download({
-                        directory: CONFIG.directory,
-                        filename: fileName
-                    });
-
-                    downloadedFile.folder = TARGET_FOLDER_ID;
-                    var fileId = downloadedFile.save();
-
-                    saved++;
-                    log.audit('FILE SAVED', 'File: ' + fileName + ' | File ID: ' + fileId);
-
-                    connection.removeFile({
-                        path: buildFilePath(CONFIG.directory, fileName)
-                    });
-
-                    removed++;
-                    log.audit('FILE REMOVED', fileName);
-
-                } catch (fileErr) {
-                    failed++;
-                    log.error('FILE ERROR', {
-                        fileName: fileName,
-                        name: fileErr.name,
-                        message: fileErr.message
-                    });
-                }
+                log.audit('TEST FILE ' + i, {
+                    name: fileList[i].name,
+                    directory: fileList[i].directory,
+                    size: fileList[i].size
+                });
             }
 
-            log.audit('GET INPUT COMPLETE', {
-                processed: processed,
-                saved: saved,
-                removed: removed,
-                skipped: skipped,
-                failed: failed,
-                remainingUsage: getRemainingUsage()
-            });
-
         } catch (e) {
-            log.error('SFTP ERROR', {
+            log.error('TEST SFTP ERROR', {
                 name: e.name,
                 message: e.message
             });
@@ -141,10 +57,10 @@ define(['N/sftp', 'N/log', 'N/runtime'], function (sftp, log, runtime) {
     }
 
     function summarize(summary) {
-        log.audit('SUMMARY', 'Script completed');
+        log.audit('TEST SUMMARY', 'Connection test completed');
 
         if (summary.inputSummary.error) {
-            log.error('INPUT ERROR', summary.inputSummary.error);
+            log.error('TEST INPUT ERROR', summary.inputSummary.error);
         }
     }
 

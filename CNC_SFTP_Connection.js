@@ -111,9 +111,9 @@ define(['N/sftp', 'N/log', 'N/runtime'], function (sftp, log, runtime) {
                       to: buildFilePath('/processed', fileName)
                     });
  
-                    // connection.removeFile({
-                    //     path: buildFilePath(CONFIG.directory, fileName)
-                    // });
+                    connection.removeFile({
+                        path: buildFilePath(CONFIG.directory, fileName)
+                    });
  
                     removed++;
                     log.audit('FILE MOVED', fileName);

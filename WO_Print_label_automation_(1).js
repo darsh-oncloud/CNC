@@ -15,7 +15,7 @@ define(['N/record', 'N/search', 'N/runtime', 'N/https', 'N/log'],
 function (record, search, runtime, https, log) {
 
     // ---------- Settings ----------
-    var TEMPLATE_ID = 2;   // SIT LPC Template "WO Label - Test Template"
+    var TEMPLATE_ID = 208;   // SIT LPC Template "WO Label - Test Template"
     var PRINTER_PARAM = 'custscript_wo_label_printer';
     var ETAIL_FIELD = 'custbody_celigo_etail_order_id';
 

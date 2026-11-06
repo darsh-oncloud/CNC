@@ -1,0 +1,210 @@
+<?xml version="1.0"?><!DOCTYPE pdf PUBLIC "-//big.faceless.org//report" "report-1.1.dtd">
+<#-- CNC BOM - 4X4 work order label (101mm x 100mm).
+     added old size Toe Kick - 12/18/23 / Fixed Old Size 12/28/23 (removed 'replacement from criteria' 1/9/24) / NFP added 1/8/23 / LPS Removed 5/21/24 / N/CB added 6/26/25 / UOM added 8/5/25 / Updated location & Ship Via
+     Batch printing added 10/8/26: when a script passes batch.records (printing.ts renderJobs), every work order in the batch prints in order.
+     NetSuite's own Print BOM never passes batch, so it prints the single native record exactly as before.
+     Layout cleanup 10/21/26: fixed header/footer heights, one <pdf> per work order with a page per unit.
+     Spacing fix 11/2/26: tighter header height (TSCA row no longer takes up a line), RUSH ORDER moved into the footer beside the SO barcode. -->
+<pdfset>
+<#-- Batch data can arrive as text; the native record gives real booleans/numbers. These accept either. -->
+<#function isTrue v><#if v?is_boolean><#return v></#if><#return ["true", "T", "Yes"]?seq_contains(v?string)></#function>
+<#function has v><#if v?is_string><#return v?has_content></#if><#return v?string?has_content></#function>
+<#function num v><#if v?is_number><#return v></#if><#if has(v)><#return v?number></#if><#return 0></#function>
+<#setting number_format="0.##">
+
+<#assign standardColors = ["SMOKY GREY (02)", "MISTY GREY (03)", "HARVEST (05)", "WHITE (10)", "ESPRESSO (11)"]>
+<#assign isBatch = (batch.records)?? && batch.records?is_sequence && batch.records?has_content>
+<#if isBatch>
+    <#assign bomRecords = batch.records>
+<#else>
+    <#assign bomRecords = [record]>
+</#if>
+
+<#list bomRecords as record>
+<#if isBatch>
+    <#assign ent = record.entityFields asm = record.assemblyitemFields>
+<#else>
+    <#assign ent = record.entity asm = record.assemblyitem>
+</#if>
+
+<#-- One label per unit; a zero-quantity WO still prints one. Component qty is shown per unit. -->
+<#assign qty = num(record.quantity!0)>
+<#if qty gt 0>
+    <#assign copies = qty perUnit = qty>
+<#else>
+    <#assign copies = 1 perUnit = 1>
+</#if>
+
+<#assign
+    location = record.location?string
+    soTranid = (record.createdfrom.tranid)!""
+    isStock = (record.custbody_mb_so_name_wo!"")?lower_case?contains("stock") || !has(soTranid)
+    isTest = record.entity == "YITZ" || num(ent.internalid!0) == 75380
+    pleaseInspect = isTrue(record.custbody_mb_wo_please_inspect)
+    isRma = isTrue(record.custbody_yy_wo_rmaorder)
+    isRushAddOn = record.custbody_mb_wo_add_on_accesories?contains("Yes")
+    isManagerRush = (record.custbody_mb_so_rush_order!"")?contains("Rush Order")
+    newCustomer = (ent.custentity9!"")?string?trim?has_content
+    productionInstr = ent.custentity_yy_cu_productioninstr!""
+    customColor = record.custbody51!""
+    mfgNotes = record.custbody_yy_wo_item_mfgnotes!""
+    woNotes = record.custbody_yy_wo_notes!""
+    showUom = isTrue(asm.custitem_yy_it_uomitem!false) && has(record.custbody_mb_wo_uom!"")
+>
+<#-- Plain NJ stock-color Luxor/accessory pieces skip SO#, customer and tag. -->
+<#assign plainNjAccessory =
+    record.custbody_mb_wo_inventory_type == "ACCESSORY" &&
+    location == "New Jersey" &&
+    record.custbody_mb_group != "HARDWARE" &&
+    !pleaseInspect &&
+    !has(record.options!"") &&
+    ["LUXOR", "ACCESSORY"]?seq_contains(record.custbody_mb_collection) &&
+    standardColors?seq_contains(record.custbodymb_wo_color)
+>
+<#-- A zero-width space after each dash lets long CUS SKUs wrap. -->
+<#assign modifications = ((record.custbody_yy_wo_options_nocolor!"")?string + (record.custbody_yy_wo_options_nocolor2!"")?string)?replace("-", "-&#8203;")>
+
+<#-- Header/footer heights must fit their content or it overlaps the body; any extra shows up as blank space.
+     Header: item (~7mm) + color line (~4mm) + barcodes (~9mm). "New Customer" sits on the color line so it adds nothing;
+     the 16px "Please Inspect" makes that line ~2mm taller.
+     Footer: production instructions (~8mm) + SO barcode (35pt, ~13mm) or RUSH ORDER alone (~8mm).
+     Tune headerMm / footerMm by a mm or two after a test print. -->
+<#assign headerMm = 21>
+<#if pleaseInspect><#assign headerMm += 2></#if>
+<#assign footerMm = 2>
+<#if has(productionInstr)><#assign footerMm += 8></#if>
+<#if has(soTranid)><#assign footerMm += 13><#elseif isRushAddOn><#assign footerMm += 8></#if>
+
+<pdf>
+<head>
+    <link name="NotoSans" type="font" subtype="truetype" src="${nsfont.NotoSans_Regular}" src-bold="${nsfont.NotoSans_Bold}" src-italic="${nsfont.NotoSans_Italic}" src-bolditalic="${nsfont.NotoSans_BoldItalic}" bytes="2" />
+    <macrolist>
+        <macro id="nlheader">
+            <table class="header">
+                <tr>
+                    <td colspan="2" align="center" style="font-size: 21px; font-weight: bold;">
+                        <#if isTest>TEST ORDER<#else>${record.assemblyitem}</#if><#if isTrue(record.custbody_yy_nfp) && record.custbody_mb_collection == "LUXOR">&#8195;NFP</#if>
+                    </td>
+                </tr>
+                <tr>
+                    <td colspan="2" align="center" style="font-size: 12px;<#if has(customColor)> font-weight: bold;</#if>">
+                        <#if has(customColor)>${customColor}<#else>${record.custbodymb_wo_color?keep_before(" (")}</#if><#if newCustomer> -- New Customer</#if><#if pleaseInspect> -- <span style="font-size: 16px; font-weight: bold;">Please Inspect</span></#if>
+                    </td>
+                </tr>
+                <tr>
+                    <td align="left" style="width: 40%;"><barcode codetype="code128" showtext="true" value="${record.tranid}" style="width: 120pt; height: 25pt;"/></td>
+                    <td align="right" style="width: 60%;"><barcode codetype="code128" showtext="true" value="${record.assemblyitem}" style="width: 120pt; height: 25pt;"/></td>
+                </tr>
+                <#-- Zero-height row: the rotated text is absolutely positioned, so this row shouldn't add a blank line under the barcodes. -->
+                <tr>
+                    <td colspan="2" style="height: 0; font-size: 0; line-height: 0;"><p rotate="90" style="top: 40pt; left: -49pt; float: left; display: block; position: absolute; height: auto; width: auto; z-index: 999; font-size: 10pt; line-height: normal;">TSCA Title VI Compliant</p></td>
+                </tr>
+            </table>
+        </macro>
+        <macro id="nlfooter">
+            <#if has(productionInstr)>
+            <table class="header">
+                <tr><td align="right" class="big">${productionInstr}</td></tr>
+            </table>
+            </#if>
+            <#if has(soTranid) || isRushAddOn>
+            <table class="header">
+                <tr>
+                    <td style="width: 50%; vertical-align: middle;"><#if isRushAddOn><span class="big">RUSH ORDER</span></#if></td>
+                    <td align="right" style="width: 50%; vertical-align: middle;"><#if has(soTranid)><barcode codetype="code128" showtext="true" value="${soTranid}" style="width: 95pt; height: 35pt;"/></#if></td>
+                </tr>
+            </table>
+            </#if>
+        </macro>
+    </macrolist>
+    <style type="text/css">
+        * { font-family: NotoSans, sans-serif; }
+        table { width: 100%; font-size: 9pt; table-layout: fixed; }
+        td { padding: 1pt 2pt; vertical-align: top; }
+        table.header td { padding: 0; font-size: 10pt; }
+        b { font-weight: bold; color: #333333; }
+        .big { font-size: 22px; font-weight: bold; }
+        .box { border: 1px solid black; font-weight: bold; padding: 1px; }
+        hr { width: 100%; height: 1px; margin: 1pt 0; color: #d3d3d3; background-color: #d3d3d3; }
+    </style>
+</head>
+
+<body header="nlheader" header-height="${headerMm}mm" footer="nlfooter" footer-height="${footerMm}mm" width="101mm" height="100mm" padding="0.1in 0.2in 0.1in 0.01in"<#if isManagerRush> background-color="#E9F637"</#if>>
+<#list 1..copies as copy>
+<#if copy gt 1><pbr/></#if>
+<table>
+    <tr>
+        <td style="width: 65%; padding: 0 0 0 5mm;">
+            <#if record.item?has_content>
+            <hr/>
+            <table>
+                <#list record.item as item>
+                <#if !(isRma && num(item.quantity!0) == 0)>
+                <tr>
+                    <td><b>${(num(item.quantity!0) - num(item.quantityfulfilled!0)) / perUnit}</b></td>
+                    <td align="right"><barcode codetype="code128" showtext="true" value="${item.item}" style="width: 145pt; height: 25pt;"/></td>
+                </tr>
+                </#if>
+                </#list>
+            </table>
+            <hr/>
+            </#if>
+        </td>
+        <td style="width: 35%; padding: 0;">
+            <table>
+                <tr>
+                    <td><#if location != ((record.createdfrom.location)!"")>${(record.createdfrom.location)!""} - </#if>${(record.createdfrom.shipmethod)!""} ${(record.createdfrom.custbody_yy_so_trucklist)!""}</td>
+                </tr>
+                <tr><td>Production Date: <b style="font-size: 16px;">${record.custbody_mb_production_date}</b></td></tr>
+                <#if isTrue(record.custbody_mb_wo_is_countertop)>
+                    <#if has(soTranid)>
+                    <tr><td style="font-size: 15px;"><b>SO#: ${soTranid}</b></td></tr>
+                    </#if>
+                    <tr><td style="font-size: 15px;"><b>PO#: ${record.custbody_mb_customer_po}</b></td></tr>
+                    <tr><td>Customer: ${record.entity}</td></tr>
+                    <tr><td>Tag: ${record.custbody_mb_wo_tag}</td></tr>
+                <#else>
+                    <#if !plainNjAccessory>
+                    <tr><td style="font-size: 13px;"><b>SO#: <#if isStock>Stock<#else>${soTranid}<#if has((record.createdfrom.custbody_yy_so_returncount)!"")>R${record.createdfrom.custbody_yy_so_returncount}</#if></#if></b></td></tr>
+                    <tr><td>Customer: ${record.entity}</td></tr>
+                    <#if has(record.custbody_mb_wo_tag!"")>
+                    <tr><td>Tag: ${record.custbody_mb_wo_tag}</td></tr>
+                    </#if>
+                    </#if>
+                    <tr><td><#if isTrue(record.custbody_yy_wo_helen)>PO: ${record.createdfrom.otherrefnum}<#elseif isTrue(record.custbody_mb_wo_cut_spray)><b style="font-size: 14px;">Cut/Spray</b><#else>Box Size: ${record.custbody_mb_wo_box_size}</#if></td></tr>
+                    <#if has(modifications) || showUom || has(mfgNotes) || has(woNotes)>
+                    <tr>
+                        <td class="box">
+                            ${modifications}
+                            <#if showUom><br/>${record.custbody_mb_wo_uom} ft</#if>
+                            <#if has(mfgNotes) || has(woNotes)>
+                                <hr width="75%" align="center" style="margin: 0;"/>
+                                ${mfgNotes}<#if has(mfgNotes) && has(woNotes)> | </#if>${woNotes}
+                            </#if>
+                        </td>
+                    </tr>
+                    </#if>
+                </#if>
+                <#-- RUSH ORDER now prints in the footer next to the SO barcode. -->
+                <#if isRma && !isTrue(record.custbody_mb_wo_is_countertop)>
+                <tr><td class="big">RMA</td></tr>
+                </#if>
+            </table>
+        </td>
+    </tr>
+</table>
+<#if isTrue(record.custbody_mb_wo_is_countertop) && has(record.options!"")>
+<#-- Countertop modification box: full label width, lined up with the components' 5mm left inset. -->
+<table style="margin-top: 1mm;">
+    <tr>
+        <td style="padding: 0 0 0 5mm;">
+            <table><tr><td class="box">${record.options}</td></tr></table>
+        </td>
+    </tr>
+</table>
+</#if>
+</#list>
+</body>
+</pdf>
+</#list>
+</pdfset>
